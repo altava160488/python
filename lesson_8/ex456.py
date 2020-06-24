@@ -1,91 +1,109 @@
 from abc import ABC, abstractmethod
 
 class Stock:
-    # параметры склада
-    def __init__(self, width, length, height):
-        self.width = width
-        self.length = length
-        self.height = height
-        self.equipment = {}
 
-    # общий объем хранения
+    def __init__(self, length, width, height):
+        self.length = length
+        self.width = width
+        self.height = height
+        self.warehouse = {}
+
+    # общий объем хранения в куб.м.(30% помещения на служебно-хозяйственные нужды)
     @staticmethod
     def storage_area(length, width, height):
         return length * width * height * 0.7
 
-    # доступный объем хранения
+    # доступный объем хранения в куб.м.
     @property
     def free_storage_area(self):
         s = 0
-        for v in self.equipment.values():
-            s += v["capacity"] * v["quantity"] * 0.001
+        for v in self.warehouse.values():
+            s += v["capacity"]
+        return Stock.storage_area(self.height, self.width, self.length) - s
 
-        return Stock.storage_area(self.height,self.width,self.length) - s
+    def imprt(self, equipment):
+        '''
+        Метод фиксации прихода оргтехники на слад
 
-    # приход оборудования
-    def imprt(self, e, quantity):
-        x = int(self.free_storage_area // (e.capacity * 0.001))
-        d = {}
-        if x == 0:
-            print("Мест на складе нет!")
-        elif x < quantity:
-            while True:
-                a = input(f"Место для {e.model} есть только в количестве {x}\n Хотите добавить?(Y/N)\n")
-                if a.lower() == 'y':
-                    d["type"] = e.type
-                    d["capacity"] = e.capacity
-                    d["quantity"] = x
-                    for k, v in self.equipment.items():
-                        if k == e.model:
-                            d["quantity"] = x + v["quantity"]
-                    self.equipment[e.model] = d
-                if a.lower() in ['y','n']: break
-        else:
-            d["type"] = e.type
-            d["capacity"] = e.capacity
-            d["quantity"] = quantity
-            for k, v in self.equipment.items():
-                if k == e.model:
-                    d["quantity"] += v["quantity"]
-            self.equipment[e.model] = d
+        :param equipment: объект класса Equipment
+        :return: None
+        '''
+        try:
+            x = int(self.free_storage_area // (equipment.capacity))
+            if x == 0:
+                print("Мест на складе больше нет!")
+                return
+            self.warehouse[equipment.serial_number] = {}
+            self.warehouse[equipment.serial_number]["type"] = equipment.get_type()
+            self.warehouse[equipment.serial_number]["model"] = equipment.model
+            self.warehouse[equipment.serial_number]["capacity"] = equipment.capacity
+        except ValueError as err:
+            print(err)
 
-    # уход оборудования
-    def exprt(self, e, quantity):
-        x = self.equipment[e.model]["quantity"] - quantity
-        if x >= 0:
-            self.equipment[e.model]["quantity"] -= quantity
-        else:
-            while True:
-                a = input(f"Осталось только {quantity - x} шт. Хотите продолжить?(Y/N)")
-                if a.lower() == 'y' : self.equipment[e.model]["quantity"] -= (quantity - x)
-                if a.lower() in ['y','n']: break
 
-    # витрина
+    def exprt(self, serial_number):
+        '''
+        Метод фиксации передачи оргтехники из склада
+
+        :param serial_number: идентификатор оргтехники
+        :return: None
+        '''
+        try:
+            del self.warehouse[serial_number]
+        except KeyError:
+            pass
+
     def show_equipment(self):
-        print(self.equipment)
+        '''
+        Вывод на экран всего что есть на складе
 
-    # количество оргтехники определенного типа
-    def type_quantity(self, type):
-        s = 0
-        for k in self.equipment.keys():
-            s += self.equipment[k]['quantity'] if self.equipment[k]['type'] == type else 0
-        return s
+        :return: None
+        '''
+        types = []
+        for v in self.warehouse.values():
+            if v["type"] not in types: types.append(v["type"])
+        if len(types) == 0: return
 
-    # количество оргтехники
-    def model_quantity(self, model):
-        s = 0
-        for k in self.equipment.keys():
-            s += self.equipment[k]['quantity'] if k == model else 0
-        return s
+        model_type = {}
+        for v in self.warehouse.values():
+            model_type[v["model"]] = v["type"]
+
+        print("Состояние склада:")
+        for t in types:
+            m = {}
+            qt = 0
+            for k, v in model_type.items():
+                if v == t:
+                    qm = 0
+                    for i in self.warehouse.values():
+                        if i["model"] == k and i["type"] == v:
+                            qm += 1
+                            qt += 1
+                    m[k] = qm
+            print(f"--- {t}: {qt} шт.")
+            for i, j in m.items():
+                print(i, j)
+
+        print(f"Объем доступного хранения {self.free_storage_area} куб.метров")
+
+
+    def show_seiral_number(self, model = None, type = None):
+        for k, v in self.warehouse.items():
+            print(f"номер: {k} модель: {v['model']} тип: {v['type']}")
+
+
 
 class Equipment(ABC):
-    def __init__(self, model, price, length, width, height, type = None):
+
+    number = 0
+
+    def __init__(self, model, length = 100, width = 100, height = 100, color_print = False):
         self.model = model
-        self.price = price
         self.width = width
         self.length = length
         self.height = height
-        self.type = type
+        Equipment.number += 1
+        self.serial_number = Equipment.number
 
     @abstractmethod
     def action(self):
@@ -93,72 +111,110 @@ class Equipment(ABC):
 
     @property
     def capacity(self):
-        return self.width * self.length * self.height
+        return self.width * self.length * self.height * 0.0000001 # куб.м.
 
     @classmethod
     def get_type(cls):
-        cls.print_type("Оргтехника")
+        return cls.get_type_val("Оргтехника")
 
     @classmethod
-    def print_type(cls, arg):
+    def get_type_val(cls, arg):
         return arg
 
+
 class Printer(Equipment):
-    def __init__(self,model,price,length,width,height,type = 'printer'):
-        super().__init__(model,price,length,width,height,type)
+
+    def __init__(self, model, length = 100, width = 100, height = 100, color_print = True):
+        super().__init__(model, length, width, height, color_print)
 
     def action(self):
         print(f"выводит печать на бумагу")
 
     @classmethod
     def get_type(cls):
-        return cls.print_type("Принтер")
+        return cls.get_type_val("Принтер")
 
 class Scaner(Equipment):
-
-    def __init__(self,model,price,length,width,height,type = 'scaner'):
-        super().__init__(model,price,length,width,height,type)
 
     def action(self):
         print(f"считывает изображение на бумаге для создания его электронной копии")
 
     @classmethod
     def get_type(cls):
-        return cls.print_type("Сканер")
+        return cls.get_type_val("Сканер")
 
 class Xerox(Equipment):
-
-    def __init__(self,model,price,length,width,height,type = 'xerox'):
-        super().__init__(model,price,length,width,height,type)
 
     def action(self):
         print(f"копирует изображение на бумаге")
 
     @classmethod
     def get_type(cls):
-        return cls.print_type("Ксерокс")
+        return cls.get_type_val("Ксерокс")
+
+s = Stock(200,200,200)
+print(f"Объем хранения {Stock.storage_area(200, 200, 200)} куб.метров")
+print(f"Объем доступного хранения {s.free_storage_area} куб.метров")
+
+while True:
+    begin = input("Хотите ввести товар? Y/N\n")
+    if begin.upper() == 'N' : exit()
+    if begin.upper() == 'Y' : break
+
+while True:
+    while True:
+        equip_type = input("Введите тип оргтехники:\n(p - Принтер; s - Сканер; x - Ксерокс)\n")
+        if equip_type.lower() in ['p', 's', 'x'] : break
+
+    equip_model = input("Введите модель:\n")
+
+    while True:
+        equip_capacity = input("Введите физические параметры в см через дефис: длина-ширина-высота\nили нажимите на Enter, если хотите оставить размеры по-умолчанию(1м-1м-1м)\n")
+        try:
+            equip_params = list(map(int,equip_capacity))
+            if len(equip_params) == 0: break
+            if len(l) != 3 : print("Неверные длина-ширина-высота коробки")
+        except:
+            print("Введены неверные данные")
+
+    while True:
+        try:
+            equip_quantity = int(input("Введите количество:\n"))
+            break
+        except:
+            pass
 
 
-sklad = Stock(500,500,500)
-print(f"Объем хранения {Stock.storage_area(500, 500, 500)} квадратных метров")
-print(f"Объем доступного хранения {sklad.free_storage_area} квадратных метров")
+    for _ in range(equip_quantity):
+        if equip_type.lower() == 'p':
+            if len(equip_params) == 0: e = Printer(equip_model)
+            else: e = Printer(equip_model, equip_params[0], equip_params[1], equip_params[2])
+        elif equip_type.lower() == 's':
+            if len(equip_params) == 0: e = Scaner(equip_model)
+            else: e = Scaner(equip_model, equip_params[0], equip_params[1], equip_params[2])
+        else:
+            if len(equip_params) == 0: e = Xerox(equip_model)
+            else: e = Xerox(equip_model, equip_params[0], equip_params[1], equip_params[2])
+        s.imprt(e)
 
-p = Printer("hp2020", 5000, 50, 50, 50)
-pp = Printer("canon2020", 1000, 55, 55, 55)
-sc = Scaner("hp200", 15000, 50, 50, 50)
-sklad.imprt(p, 1200)
-sklad.imprt(p, 200)
-sklad.imprt(pp, 200)
-sklad.imprt(sc, 200)
-print()
-print("Наличие товаров на складе:")
-print(f'{Printer.get_type()} - ', sklad.type_quantity("printer"))
-print(f'{Scaner.get_type()} - ', sklad.type_quantity("scaner"))
-print()
-print("Наличие hp2020:\n", sklad.model_quantity("hp2020"))
+    n = input("Хотите еще добавить товар? Y/N\n")
+    if n.lower() == 'n':
+        break
+    if n.lower() != 'y':
+        print("Нажмите на клавишу с буквой 'y'")
 
-print()
-sklad.show_equipment()
-print()
-print(f"Объем доступного хранения {sklad.free_storage_area} квадратных метров")
+s.show_equipment()
 
+while True:
+    if len(s.warehouse) == 0 : break
+    r = input("Хотите списать товар? Y/N\n")
+    if r.lower() == 'n':
+        s.show_equipment()
+        break
+    if r.lower() == 'y':
+        s.show_seiral_number()
+        try:
+            a = int(input("Укажите номер товара:\n"))
+            s.exprt(a)
+        except ValueError:
+            print("Номер товара неверен!")
